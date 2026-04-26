@@ -1,5 +1,13 @@
-// 内存数据存储
-const store: Record<string, any[]> = {}
+// 内存数据存储 - 使用 globalThis 确保在 Vercel Serverless Functions 中持久化
+// 防止热重载和冷启动时数据丢失
+const globalForDb = globalThis as unknown as {
+  treeholeStore: Record<string, any[]> | undefined
+}
+
+const store: Record<string, any[]> = globalForDb.treeholeStore || {}
+if (!globalForDb.treeholeStore) {
+  globalForDb.treeholeStore = store
+}
 
 // 通用读写函数
 function readJSON<T>(filename: string): T[] {
