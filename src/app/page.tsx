@@ -101,7 +101,13 @@ function HomeContent() {
         {!heroCollapsed ? (
           <>
             <h1 className="hero-title">树洞</h1>
-            <p className="hero-subtitle">在这里，做最真实的自己</p>
+            <p className="hero-subtitle">
+              {isAuthenticated && user ? (
+                <>欢迎回来，<strong style={{ color: 'var(--accent)' }}>{user.nickname}</strong></>
+              ) : (
+                '在这里，做最真实的自己'
+              )}
+            </p>
             <div className="hero-actions">
               <button className="btn-primary" onClick={() => {
                 if (isAuthenticated) {

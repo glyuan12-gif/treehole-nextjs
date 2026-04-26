@@ -87,16 +87,20 @@ export default function Navbar() {
             </svg>
           </Link>
 
-          {isAuthenticated ? (
-            <Link href="/settings" className="nav-identity">
-              <Avatar user={user} size="sm" />
-            </Link>
+          {isAuthenticated && user ? (
+            <div className="nav-user-menu" style={{ position: 'relative' }}>
+              <Link href="/settings" className="nav-identity" style={{ display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none', color: 'var(--text-primary)' }}>
+                <Avatar user={user} size="sm" />
+                <span style={{ fontSize: '0.85rem', fontWeight: 500, maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.nickname}</span>
+              </Link>
+            </div>
           ) : (
             <Link href="/settings" className="nav-btn" title="登录">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
                 <circle cx="12" cy="7" r="4" />
               </svg>
+              <span style={{ fontSize: '0.75rem' }}>登录</span>
             </Link>
           )}
         </div>

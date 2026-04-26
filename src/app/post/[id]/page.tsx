@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 
 import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { api, type Post, type Comment } from '@/lib/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
@@ -373,21 +374,31 @@ export default function PostDetailPage() {
           zIndex: 50, display: 'flex', gap: 8, alignItems: 'center',
           maxWidth: 640, margin: '0 auto',
         }}>
-          <input
-            className="form-input"
-            placeholder="写下你的评论..."
-            value={commentText}
-            onChange={(e) => setCommentText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleComment() }}
-            style={{ flex: 1 }}
-          />
-          <button
-            className="btn-primary btn-sm"
-            onClick={handleComment}
-            disabled={submittingComment || !commentText.trim()}
-          >
-            {submittingComment ? '...' : '发送'}
-          </button>
+          {isAuthenticated ? (
+            <>
+              <input
+                className="form-input"
+                placeholder="写下你的评论..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleComment() }}
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn-primary btn-sm"
+                onClick={handleComment}
+                disabled={submittingComment || !commentText.trim()}
+              >
+                {submittingComment ? '...' : '发送'}
+              </button>
+            </>
+          ) : (
+            <div style={{ flex: 1, textAlign: 'center', padding: '4px 0' }}>
+              <Link href="/settings" style={{ color: 'var(--accent)', textDecoration: 'none', fontSize: '0.9rem' }}>
+                登录后可以评论
+              </Link>
+            </div>
+          )}
         </div>
       </div>
 

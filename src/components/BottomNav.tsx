@@ -3,9 +3,11 @@
 import React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useAuth } from '@/contexts/AuthContext'
 
 export default function BottomNav() {
   const pathname = usePathname()
+  const { isAuthenticated } = useAuth()
 
   const tabs = [
     {
@@ -64,6 +66,9 @@ export default function BottomNav() {
   return (
     <div className="mobile-tab-bar">
       {tabs.map((tab) => {
+        const needsAuth = ['/messages', '/diary', '/letters'].includes(tab.href)
+        const isDisabled = needsAuth && !isAuthenticated
+
         if (tab.isCreate) {
           return (
             <Link key={tab.href} href={tab.href} className="tab-create">
@@ -75,7 +80,13 @@ export default function BottomNav() {
         const isActive = pathname === tab.href
 
         return (
-          <Link key={tab.href} href={tab.href} className={`tab-item ${isActive ? 'active' : ''}`}>
+          <Link
+            key={tab.href}
+            href={isDisabled ? '/settings' : tab.href}
+            className={`tab-item ${isActive ? 'active' : ''}`}
+            style={isDisabled ? { opacity: 0.5 } : undefined}
+            onClick={isDisabled ? (e) => { e.preventDefault() } : undefined}
+          >
             {tab.icon}
             <span>{tab.label}</span>
           </Link>

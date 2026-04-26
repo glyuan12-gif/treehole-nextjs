@@ -106,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await api.register(data)
       setToken(result.token)
+      api.setToken(result.token)
       // 尝试获取完整用户信息，如果失败则使用注册返回的基本信息
       try {
         await refreshUser()
@@ -141,6 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await api.login(veinId, password)
       setToken(result.token)
+      api.setToken(result.token)
       // 尝试获取完整用户信息，如果失败则使用登录返回的基本信息
       try {
         await refreshUser()
