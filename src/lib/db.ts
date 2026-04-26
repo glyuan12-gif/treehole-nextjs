@@ -28,7 +28,7 @@ function memoryWriteJSON<T>(collection: string, data: T[]): void {
 // ==================== Redis 客户端 ====================
 
 async function redisGet<T>(collection: string): Promise<T[]> {
-  const res = await fetch(`${UPSTASH_REDIS_REST_URL}/GET/treehole:${collection}`, {
+  const res = await fetch(`${UPSTASH_REDIS_REST_URL}/get/treehole:${collection}`, {
     headers: {
       Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
     },
@@ -48,10 +48,13 @@ async function redisGet<T>(collection: string): Promise<T[]> {
 }
 
 async function redisSet(collection: string, data: any[]): Promise<void> {
-  const res = await fetch(`${UPSTASH_REDIS_REST_URL}/SET/treehole:${collection}/${encodeURIComponent(JSON.stringify(data))}`, {
+  const res = await fetch(`${UPSTASH_REDIS_REST_URL}/set/treehole:${collection}`, {
+    method: 'POST',
     headers: {
       Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+      'Content-Type': 'text/plain',
     },
+    body: JSON.stringify(data),
   })
   if (!res.ok) {
     throw new Error(`Redis SET failed for treehole:${collection}: ${res.status}`)
