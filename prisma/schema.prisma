@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  veinId        String    @unique  // 叶脉号，公开的唯一标识
+  nickname      String
+  role          String    @default("other")  // student/worker/freelancer/other
+  mbti          String    @default("")
+  avatarStyle   String    @default("emoji")
+  avatarEmoji   String    @default("😊")
+  avatarColor   String    @default("#5b8c6e")
+  allowFind     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  posts             Post[]
+  comments          Comment[]
+  sentMessages      DirectMessage[]     @relation("SentMessages")
+  receivedMessages  DirectMessage[]     @relation("ReceivedMessages")
+  sentLetters       Letter[]            @relation("SentLetters")
+  receivedLetters   Letter[]            @relation("ReceivedLetters")
+  diaries           Diary[]
+  reactions         Reaction[]
+  postLikes         PostLike[]
+  reports           Report[]
+}
+
+model Post {
+  id            String    @id @default(cuid())
+  title         String
+  content       String
+  channel       String    // campus/work/emotion/life/treehole
+  mood          String    @default("")
+  tags          String    @default("[]")  // JSON array
+  image         String    @default("")
+  showVeinId    Boolean   @default(false)
+  auditStatus   String    @default("approved")  // approved/pending/rejected
+  likeCount     Int       @default(0)
+  commentCount  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id])
+
+  comments      Comment[]
+  reactions     Reaction[]
+  likes         PostLike[]
+  reports       Report[]
+}
+
+model Comment {
+  id            String    @id @default(cuid())
+  content       String
+  createdAt     DateTime  @default(now())
+
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id])
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id])
+}
+
+model PostLike {
+  id            String    @id @default(cuid())
+  createdAt     DateTime  @default(now())
+
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id])
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+}
+
+model Reaction {
+  id            String    @id @default(cuid())
+  type          String    // touched/empathy/resonate/agree/think/warm
+  createdAt     DateTime  @default(now())
+
+  postId        String
+  post          Post      @relation(fields: [postId], references: [id])
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId, type])
+}
+
+model DirectMessage {
+  id            String    @id @default(cuid())
+  content       String
+  createdAt     DateTime  @default(now())
+
+  senderId      String
+  sender        User      @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId    String
+  receiver      User      @relation("ReceivedMessages", fields: [receiverId], references: [id])
+}
+
+model Diary {
+  id            String    @id @default(cuid())
+  date          String    // YYYY-MM-DD
+  content       String
+  mood          String    @default("")
+  isPublic      Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  authorId      String
+  author        User      @relation(fields: [authorId], references: [id])
+}
+
+model Letter {
+  id            String    @id @default(cuid())
+  content       String
+  openDate      DateTime?  // 封存到期日期，null 表示写给自己的未封存信
+  isOpened      Boolean   @default(false)
+  isSelf        Boolean   @default(true)  // true=写给自己的信
+  createdAt     DateTime  @default(now())
+
+  senderId      String
+  sender        User      @relation("SentLetters", fields: [senderId], references: [id])
+  receiverId    String?
+  receiver      User?     @relation("ReceivedLetters", fields: [receiverId], references: [id])
+}
+
+model Report {
+  id            String    @id @default(cuid())
+  reason        String
+  detail        String    @default("")
+  createdAt     DateTime  @default(now())
+
+  postId        String?
+  post          Post?     @relation(fields: [postId], references: [id])
+  reporterId    String
+  reporter      User      @relation(fields: [reporterId], references: [id])
+}
