@@ -17,7 +17,7 @@ export async function GET(
 
     const { id } = await params
 
-    const letter = letters.findById(id)
+    const letter = await letters.findById(id)
 
     if (!letter) {
       return NextResponse.json(
@@ -49,12 +49,12 @@ export async function GET(
 
     // 如果信件已到期且未标记为已读，标记为已读
     if (!letter.isOpened && letter.openDate) {
-      letters.update(id, { isOpened: true })
+      await letters.update(id, { isOpened: true })
       letter.isOpened = true
     }
 
-    const senderInfo = getUserBasicInfo(letter.senderId)
-    const receiverInfo = letter.receiverId ? getUserBasicInfo(letter.receiverId) : null
+    const senderInfo = await getUserBasicInfo(letter.senderId)
+    const receiverInfo = letter.receiverId ? await getUserBasicInfo(letter.receiverId) : null
 
     return NextResponse.json({
       ...letter,
@@ -89,7 +89,7 @@ export async function DELETE(
 
     const { id } = await params
 
-    const letter = letters.findById(id)
+    const letter = await letters.findById(id)
 
     if (!letter) {
       return NextResponse.json(
@@ -106,7 +106,7 @@ export async function DELETE(
       )
     }
 
-    letters.delete(id)
+    await letters.delete(id)
 
     return NextResponse.json({ message: '删除成功' })
   } catch (error) {

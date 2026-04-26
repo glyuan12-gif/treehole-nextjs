@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 获取与当前用户相关的所有消息，按时间倒序
-    const userMessages = messages.findByUser(user.id).sort(
+    const userMessages = (await messages.findByUser(user.id)).sort(
       (a, b) => b.createdAt.localeCompare(a.createdAt)
     )
 
@@ -32,11 +32,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const conversations = Array.from(conversationMap.values()).map((msg) => {
+    const conversations = await Promise.all(Array.from(conversationMap.values()).map(async (msg) => {
       const isSender = msg.senderId === user.id
       const otherId = isSender ? msg.receiverId : msg.senderId
-      const otherPublicInfo = getUserPublicInfo(otherId)
-      const otherBasicInfo = getUserBasicInfo(otherId)
+      const otherPublicInfo = await getUserPublicInfo(otherId)
+      const otherBasicInfo = await getUserBasicInfo(otherId)
       const other = (otherBasicInfo ? { ...otherBasicInfo, mbti: otherPublicInfo?.mbti || '' } : null) || {
         id: otherId,
         veinId: 'unknown',
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         lastMessageAt: msg.createdAt,
         isSender,
       }
-    })
+    }))
 
     return NextResponse.json(conversations)
   } catch (error) {
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { receiverVeinId, content } = sendMessageSchema.parse(body)
 
-    const receiver = users.findByVeinId(receiverVeinId)
+    const receiver = await users.findByVeinId(receiverVeinId)
 
     if (!receiver) {
       return NextResponse.json(
@@ -92,14 +92,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const message = messages.create({
+    const message = await messages.create({
       content,
       senderId: user.id,
       receiverId: receiver.id,
     })
 
-    const senderInfo = getUserBasicInfo(user.id)
-    const receiverInfo = getUserBasicInfo(receiver.id)
+    const senderInfo = await getUserBasicInfo(user.id)
+    const receiverInfo = await getUserBasicInfo(receiver.id)
 
     return NextResponse.json({
       ...message,

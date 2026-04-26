@@ -17,12 +17,12 @@ export async function GET(
   try {
     const { id: postId } = await params
 
-    const postComments = comments.findByPostId(postId).sort(
+    const postComments = (await comments.findByPostId(postId)).sort(
       (a, b) => a.createdAt.localeCompare(b.createdAt)
     )
 
-    const commentsWithAuthor = postComments.map(comment => {
-      const author = getUserBasicInfo(comment.authorId)
+    const commentsWithAuthor = await Promise.all(postComments.map(async comment => {
+      const author = await getUserBasicInfo(comment.authorId)
       return {
         ...comment,
         author: author || {
@@ -34,7 +34,7 @@ export async function GET(
           avatarColor: '#999',
         },
       }
-    })
+    }))
 
     return NextResponse.json(commentsWithAuthor)
   } catch (error) {
@@ -59,7 +59,7 @@ export async function POST(
 
     const { id: postId } = await params
 
-    const post = posts.findById(postId)
+    const post = await posts.findById(postId)
 
     if (!post) {
       return NextResponse.json(
@@ -71,16 +71,16 @@ export async function POST(
     const body = await request.json()
     const { content } = commentSchema.parse(body)
 
-    const comment = comments.create({
+    const comment = await comments.create({
       content,
       postId,
       authorId: user.id,
     })
 
     // 更新帖子评论数
-    posts.update(postId, { commentCount: post.commentCount + 1 })
+    await posts.update(postId, { commentCount: post.commentCount + 1 })
 
-    const author = getUserBasicInfo(user.id)
+    const author = await getUserBasicInfo(user.id)
 
     return NextResponse.json({
       ...comment,

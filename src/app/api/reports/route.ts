@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // 如果举报的是帖子，检查帖子是否存在
     if (data.postId) {
-      const post = posts.findById(data.postId)
+      const post = await posts.findById(data.postId)
       if (!post) {
         return NextResponse.json(
           { error: '帖子不存在' },
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const report = reports.create({
+    const report = await reports.create({
       postId: data.postId || null,
       reason: data.reason,
       detail: data.detail,

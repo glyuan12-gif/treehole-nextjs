@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20')))
 
-    let filtered = posts.getAll().filter(p => p.auditStatus === 'approved')
+    let filtered = (await posts.getAll()).filter(p => p.auditStatus === 'approved')
 
     if (channel) {
       filtered = filtered.filter(p => p.channel === channel)
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     }
     if (mbti) {
       // 按 mbti 过滤需要关联 author
-      const allUsers = users.getAll()
+      const allUsers = await users.getAll()
       const userIdsWithMbti = new Set(allUsers.filter(u => u.mbti === mbti).map(u => u.id))
       filtered = filtered.filter(p => userIdsWithMbti.has(p.authorId))
     }
@@ -66,8 +66,8 @@ export async function GET(request: NextRequest) {
     const paged = filtered.slice((page - 1) * limit, page * limit)
 
     // 填充 author 信息
-    const postsWithAuthor = paged.map(post => {
-      const author = getUserPublicInfo(post.authorId)
+    const postsWithAuthor = await Promise.all(paged.map(async post => {
+      const author = await getUserPublicInfo(post.authorId)
       return {
         ...post,
         author: author || {
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
           mbti: '',
         },
       }
-    })
+    }))
 
     return NextResponse.json({ posts: postsWithAuthor, total })
   } catch (error) {
@@ -102,7 +102,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const data = createPostSchema.parse(body)
 
-    const post = posts.create({
+    const post = await posts.create({
       title: data.title,
       content: data.content,
       channel: data.channel,
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
       authorId: user.id,
     })
 
-    const author = getUserPublicInfo(user.id)
+    const author = await getUserPublicInfo(user.id)
 
     return NextResponse.json({
       ...post,

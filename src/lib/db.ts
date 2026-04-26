@@ -1,21 +1,92 @@
-// 内存数据存储 - 使用 globalThis 确保在 Vercel Serverless Functions 中持久化
-// 防止热重载和冷启动时数据丢失
+// 数据持久化存储 - 支持 Upstash Redis REST API 和内存 fallback
+// 当环境变量 UPSTASH_REDIS_REST_URL 和 UPSTASH_REDIS_REST_TOKEN 存在时使用 Redis
+// 否则 fallback 到 globalThis 内存存储（用于本地开发）
+
+const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL
+const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
+const USE_REDIS = !!(UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN)
+
+// ==================== 内存存储 (fallback) ====================
+
 const globalForDb = globalThis as unknown as {
   treeholeStore: Record<string, any[]> | undefined
 }
 
-const store: Record<string, any[]> = globalForDb.treeholeStore || {}
+const memoryStore: Record<string, any[]> = globalForDb.treeholeStore || {}
 if (!globalForDb.treeholeStore) {
-  globalForDb.treeholeStore = store
+  globalForDb.treeholeStore = memoryStore
 }
 
-// 通用读写函数
-function readJSON<T>(filename: string): T[] {
-  return (store[filename] as T[]) || []
+function memoryReadJSON<T>(collection: string): T[] {
+  return (memoryStore[collection] as T[]) || []
 }
 
-function writeJSON<T>(filename: string, data: T[]): void {
-  store[filename] = data
+function memoryWriteJSON<T>(collection: string, data: T[]): void {
+  memoryStore[collection] = data
+}
+
+// ==================== Redis 客户端 ====================
+
+async function redisGet<T>(collection: string): Promise<T[]> {
+  const res = await fetch(`${UPSTASH_REDIS_REST_URL}/GET/treehole:${collection}`, {
+    headers: {
+      Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`Redis GET failed for treehole:${collection}: ${res.status}`)
+  }
+  const data = await res.json()
+  if (data.result === null || data.result === undefined) {
+    return []
+  }
+  try {
+    return JSON.parse(data.result)
+  } catch {
+    return []
+  }
+}
+
+async function redisSet(collection: string, data: any[]): Promise<void> {
+  const res = await fetch(`${UPSTASH_REDIS_REST_URL}/SET/treehole:${collection}/${encodeURIComponent(JSON.stringify(data))}`, {
+    headers: {
+      Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+    },
+  })
+  if (!res.ok) {
+    throw new Error(`Redis SET failed for treehole:${collection}: ${res.status}`)
+  }
+}
+
+// ==================== 通用读写函数 ====================
+
+function readJSON<T>(collection: string): T[] {
+  if (USE_REDIS) {
+    throw new Error('readJSON is sync-only; use readJSONAsync when Redis is enabled')
+  }
+  return memoryReadJSON<T>(collection)
+}
+
+function writeJSON<T>(collection: string, data: T[]): void {
+  if (USE_REDIS) {
+    throw new Error('writeJSON is sync-only; use writeJSONAsync when Redis is enabled')
+  }
+  memoryWriteJSON(collection, data)
+}
+
+async function readJSONAsync<T>(collection: string): Promise<T[]> {
+  if (USE_REDIS) {
+    return redisGet<T>(collection)
+  }
+  return memoryReadJSON<T>(collection)
+}
+
+async function writeJSONAsync<T>(collection: string, data: T[]): Promise<void> {
+  if (USE_REDIS) {
+    await redisSet(collection, data)
+  } else {
+    memoryWriteJSON(collection, data)
+  }
 }
 
 // 生成唯一 ID
@@ -46,31 +117,57 @@ export interface User {
 }
 
 export const users = {
-  getAll: (): User[] => readJSON<User>('users.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<User[]> => readJSONAsync<User>('users')
+    : (): User[] => readJSON<User>('users'),
 
-  findById: (id: string): User | undefined =>
-    readJSON<User>('users.json').find(u => u.id === id),
+  findById: USE_REDIS
+    ? async (id: string): Promise<User | undefined> =>
+        (await readJSONAsync<User>('users')).find(u => u.id === id)
+    : (id: string): User | undefined =>
+        readJSON<User>('users').find(u => u.id === id),
 
-  findByVeinId: (veinId: string): User | undefined =>
-    readJSON<User>('users.json').find(u => u.veinId === veinId),
+  findByVeinId: USE_REDIS
+    ? async (veinId: string): Promise<User | undefined> =>
+        (await readJSONAsync<User>('users')).find(u => u.veinId === veinId)
+    : (veinId: string): User | undefined =>
+        readJSON<User>('users').find(u => u.veinId === veinId),
 
-  create: (data: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): User => {
-    const all = readJSON<User>('users.json')
-    const now = new Date().toISOString()
-    const user: User = { ...data, id: genId(), createdAt: now, updatedAt: now }
-    all.push(user)
-    writeJSON('users.json', all)
-    return user
-  },
+  create: USE_REDIS
+    ? async (data: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User> => {
+        const all = await readJSONAsync<User>('users')
+        const now = new Date().toISOString()
+        const user: User = { ...data, id: genId(), createdAt: now, updatedAt: now }
+        all.push(user)
+        await writeJSONAsync('users', all)
+        return user
+      }
+    : (data: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): User => {
+        const all = readJSON<User>('users')
+        const now = new Date().toISOString()
+        const user: User = { ...data, id: genId(), createdAt: now, updatedAt: now }
+        all.push(user)
+        writeJSON('users', all)
+        return user
+      },
 
-  update: (id: string, data: Partial<User>): User | undefined => {
-    const all = readJSON<User>('users.json')
-    const idx = all.findIndex(u => u.id === id)
-    if (idx === -1) return undefined
-    all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
-    writeJSON('users.json', all)
-    return all[idx]
-  },
+  update: USE_REDIS
+    ? async (id: string, data: Partial<User>): Promise<User | undefined> => {
+        const all = await readJSONAsync<User>('users')
+        const idx = all.findIndex(u => u.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
+        await writeJSONAsync('users', all)
+        return all[idx]
+      }
+    : (id: string, data: Partial<User>): User | undefined => {
+        const all = readJSON<User>('users')
+        const idx = all.findIndex(u => u.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
+        writeJSON('users', all)
+        return all[idx]
+      },
 }
 
 // ==================== Post ====================
@@ -93,36 +190,67 @@ export interface Post {
 }
 
 export const posts = {
-  getAll: (): Post[] => readJSON<Post>('posts.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<Post[]> => readJSONAsync<Post>('posts')
+    : (): Post[] => readJSON<Post>('posts'),
 
-  findById: (id: string): Post | undefined =>
-    readJSON<Post>('posts.json').find(p => p.id === id),
+  findById: USE_REDIS
+    ? async (id: string): Promise<Post | undefined> =>
+        (await readJSONAsync<Post>('posts')).find(p => p.id === id)
+    : (id: string): Post | undefined =>
+        readJSON<Post>('posts').find(p => p.id === id),
 
-  create: (data: Omit<Post, 'id' | 'createdAt' | 'updatedAt'>): Post => {
-    const all = readJSON<Post>('posts.json')
-    const now = new Date().toISOString()
-    const post: Post = { ...data, id: genId(), createdAt: now, updatedAt: now }
-    all.push(post)
-    writeJSON('posts.json', all)
-    return post
-  },
+  create: USE_REDIS
+    ? async (data: Omit<Post, 'id' | 'createdAt' | 'updatedAt'>): Promise<Post> => {
+        const all = await readJSONAsync<Post>('posts')
+        const now = new Date().toISOString()
+        const post: Post = { ...data, id: genId(), createdAt: now, updatedAt: now }
+        all.push(post)
+        await writeJSONAsync('posts', all)
+        return post
+      }
+    : (data: Omit<Post, 'id' | 'createdAt' | 'updatedAt'>): Post => {
+        const all = readJSON<Post>('posts')
+        const now = new Date().toISOString()
+        const post: Post = { ...data, id: genId(), createdAt: now, updatedAt: now }
+        all.push(post)
+        writeJSON('posts', all)
+        return post
+      },
 
-  update: (id: string, data: Partial<Post>): Post | undefined => {
-    const all = readJSON<Post>('posts.json')
-    const idx = all.findIndex(p => p.id === id)
-    if (idx === -1) return undefined
-    all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
-    writeJSON('posts.json', all)
-    return all[idx]
-  },
+  update: USE_REDIS
+    ? async (id: string, data: Partial<Post>): Promise<Post | undefined> => {
+        const all = await readJSONAsync<Post>('posts')
+        const idx = all.findIndex(p => p.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
+        await writeJSONAsync('posts', all)
+        return all[idx]
+      }
+    : (id: string, data: Partial<Post>): Post | undefined => {
+        const all = readJSON<Post>('posts')
+        const idx = all.findIndex(p => p.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
+        writeJSON('posts', all)
+        return all[idx]
+      },
 
-  delete: (id: string): boolean => {
-    const all = readJSON<Post>('posts.json')
-    const filtered = all.filter(p => p.id !== id)
-    if (filtered.length === all.length) return false
-    writeJSON('posts.json', filtered)
-    return true
-  },
+  delete: USE_REDIS
+    ? async (id: string): Promise<boolean> => {
+        const all = await readJSONAsync<Post>('posts')
+        const filtered = all.filter(p => p.id !== id)
+        if (filtered.length === all.length) return false
+        await writeJSONAsync('posts', filtered)
+        return true
+      }
+    : (id: string): boolean => {
+        const all = readJSON<Post>('posts')
+        const filtered = all.filter(p => p.id !== id)
+        if (filtered.length === all.length) return false
+        writeJSON('posts', filtered)
+        return true
+      },
 }
 
 // ==================== Comment ====================
@@ -136,18 +264,31 @@ export interface Comment {
 }
 
 export const comments = {
-  getAll: (): Comment[] => readJSON<Comment>('comments.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<Comment[]> => readJSONAsync<Comment>('comments')
+    : (): Comment[] => readJSON<Comment>('comments'),
 
-  findByPostId: (postId: string): Comment[] =>
-    readJSON<Comment>('comments.json').filter(c => c.postId === postId),
+  findByPostId: USE_REDIS
+    ? async (postId: string): Promise<Comment[]> =>
+        (await readJSONAsync<Comment>('comments')).filter(c => c.postId === postId)
+    : (postId: string): Comment[] =>
+        readJSON<Comment>('comments').filter(c => c.postId === postId),
 
-  create: (data: Omit<Comment, 'id' | 'createdAt'>): Comment => {
-    const all = readJSON<Comment>('comments.json')
-    const comment: Comment = { ...data, id: genId(), createdAt: new Date().toISOString() }
-    all.push(comment)
-    writeJSON('comments.json', all)
-    return comment
-  },
+  create: USE_REDIS
+    ? async (data: Omit<Comment, 'id' | 'createdAt'>): Promise<Comment> => {
+        const all = await readJSONAsync<Comment>('comments')
+        const comment: Comment = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(comment)
+        await writeJSONAsync('comments', all)
+        return comment
+      }
+    : (data: Omit<Comment, 'id' | 'createdAt'>): Comment => {
+        const all = readJSON<Comment>('comments')
+        const comment: Comment = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(comment)
+        writeJSON('comments', all)
+        return comment
+      },
 }
 
 // ==================== PostLike ====================
@@ -160,26 +301,47 @@ export interface PostLike {
 }
 
 export const postLikes = {
-  getAll: (): PostLike[] => readJSON<PostLike>('postLikes.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<PostLike[]> => readJSONAsync<PostLike>('postLikes')
+    : (): PostLike[] => readJSON<PostLike>('postLikes'),
 
-  findUnique: (postId: string, userId: string): PostLike | undefined =>
-    readJSON<PostLike>('postLikes.json').find(l => l.postId === postId && l.userId === userId),
+  findUnique: USE_REDIS
+    ? async (postId: string, userId: string): Promise<PostLike | undefined> =>
+        (await readJSONAsync<PostLike>('postLikes')).find(l => l.postId === postId && l.userId === userId)
+    : (postId: string, userId: string): PostLike | undefined =>
+        readJSON<PostLike>('postLikes').find(l => l.postId === postId && l.userId === userId),
 
-  create: (data: Omit<PostLike, 'id' | 'createdAt'>): PostLike => {
-    const all = readJSON<PostLike>('postLikes.json')
-    const like: PostLike = { ...data, id: genId(), createdAt: new Date().toISOString() }
-    all.push(like)
-    writeJSON('postLikes.json', all)
-    return like
-  },
+  create: USE_REDIS
+    ? async (data: Omit<PostLike, 'id' | 'createdAt'>): Promise<PostLike> => {
+        const all = await readJSONAsync<PostLike>('postLikes')
+        const like: PostLike = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(like)
+        await writeJSONAsync('postLikes', all)
+        return like
+      }
+    : (data: Omit<PostLike, 'id' | 'createdAt'>): PostLike => {
+        const all = readJSON<PostLike>('postLikes')
+        const like: PostLike = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(like)
+        writeJSON('postLikes', all)
+        return like
+      },
 
-  delete: (id: string): boolean => {
-    const all = readJSON<PostLike>('postLikes.json')
-    const filtered = all.filter(l => l.id !== id)
-    if (filtered.length === all.length) return false
-    writeJSON('postLikes.json', filtered)
-    return true
-  },
+  delete: USE_REDIS
+    ? async (id: string): Promise<boolean> => {
+        const all = await readJSONAsync<PostLike>('postLikes')
+        const filtered = all.filter(l => l.id !== id)
+        if (filtered.length === all.length) return false
+        await writeJSONAsync('postLikes', filtered)
+        return true
+      }
+    : (id: string): boolean => {
+        const all = readJSON<PostLike>('postLikes')
+        const filtered = all.filter(l => l.id !== id)
+        if (filtered.length === all.length) return false
+        writeJSON('postLikes', filtered)
+        return true
+      },
 }
 
 // ==================== Reaction ====================
@@ -193,28 +355,51 @@ export interface Reaction {
 }
 
 export const reactions = {
-  getAll: (): Reaction[] => readJSON<Reaction>('reactions.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<Reaction[]> => readJSONAsync<Reaction>('reactions')
+    : (): Reaction[] => readJSON<Reaction>('reactions'),
 
-  findUnique: (postId: string, userId: string, type: string): Reaction | undefined =>
-    readJSON<Reaction>('reactions.json').find(
-      r => r.postId === postId && r.userId === userId && r.type === type
-    ),
+  findUnique: USE_REDIS
+    ? async (postId: string, userId: string, type: string): Promise<Reaction | undefined> =>
+        (await readJSONAsync<Reaction>('reactions')).find(
+          r => r.postId === postId && r.userId === userId && r.type === type
+        )
+    : (postId: string, userId: string, type: string): Reaction | undefined =>
+        readJSON<Reaction>('reactions').find(
+          r => r.postId === postId && r.userId === userId && r.type === type
+        ),
 
-  create: (data: Omit<Reaction, 'id' | 'createdAt'>): Reaction => {
-    const all = readJSON<Reaction>('reactions.json')
-    const reaction: Reaction = { ...data, id: genId(), createdAt: new Date().toISOString() }
-    all.push(reaction)
-    writeJSON('reactions.json', all)
-    return reaction
-  },
+  create: USE_REDIS
+    ? async (data: Omit<Reaction, 'id' | 'createdAt'>): Promise<Reaction> => {
+        const all = await readJSONAsync<Reaction>('reactions')
+        const reaction: Reaction = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(reaction)
+        await writeJSONAsync('reactions', all)
+        return reaction
+      }
+    : (data: Omit<Reaction, 'id' | 'createdAt'>): Reaction => {
+        const all = readJSON<Reaction>('reactions')
+        const reaction: Reaction = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(reaction)
+        writeJSON('reactions', all)
+        return reaction
+      },
 
-  delete: (id: string): boolean => {
-    const all = readJSON<Reaction>('reactions.json')
-    const filtered = all.filter(r => r.id !== id)
-    if (filtered.length === all.length) return false
-    writeJSON('reactions.json', filtered)
-    return true
-  },
+  delete: USE_REDIS
+    ? async (id: string): Promise<boolean> => {
+        const all = await readJSONAsync<Reaction>('reactions')
+        const filtered = all.filter(r => r.id !== id)
+        if (filtered.length === all.length) return false
+        await writeJSONAsync('reactions', filtered)
+        return true
+      }
+    : (id: string): boolean => {
+        const all = readJSON<Reaction>('reactions')
+        const filtered = all.filter(r => r.id !== id)
+        if (filtered.length === all.length) return false
+        writeJSON('reactions', filtered)
+        return true
+      },
 }
 
 // ==================== DirectMessage ====================
@@ -228,27 +413,49 @@ export interface DirectMessage {
 }
 
 export const messages = {
-  getAll: (): DirectMessage[] => readJSON<DirectMessage>('messages.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<DirectMessage[]> => readJSONAsync<DirectMessage>('messages')
+    : (): DirectMessage[] => readJSON<DirectMessage>('messages'),
 
-  findBetween: (userId1: string, userId2: string): DirectMessage[] =>
-    readJSON<DirectMessage>('messages.json').filter(
-      m =>
-        (m.senderId === userId1 && m.receiverId === userId2) ||
-        (m.senderId === userId2 && m.receiverId === userId1)
-    ),
+  findBetween: USE_REDIS
+    ? async (userId1: string, userId2: string): Promise<DirectMessage[]> =>
+        (await readJSONAsync<DirectMessage>('messages')).filter(
+          m =>
+            (m.senderId === userId1 && m.receiverId === userId2) ||
+            (m.senderId === userId2 && m.receiverId === userId1)
+        )
+    : (userId1: string, userId2: string): DirectMessage[] =>
+        readJSON<DirectMessage>('messages').filter(
+          m =>
+            (m.senderId === userId1 && m.receiverId === userId2) ||
+            (m.senderId === userId2 && m.receiverId === userId1)
+        ),
 
-  findByUser: (userId: string): DirectMessage[] =>
-    readJSON<DirectMessage>('messages.json').filter(
-      m => m.senderId === userId || m.receiverId === userId
-    ),
+  findByUser: USE_REDIS
+    ? async (userId: string): Promise<DirectMessage[]> =>
+        (await readJSONAsync<DirectMessage>('messages')).filter(
+          m => m.senderId === userId || m.receiverId === userId
+        )
+    : (userId: string): DirectMessage[] =>
+        readJSON<DirectMessage>('messages').filter(
+          m => m.senderId === userId || m.receiverId === userId
+        ),
 
-  create: (data: Omit<DirectMessage, 'id' | 'createdAt'>): DirectMessage => {
-    const all = readJSON<DirectMessage>('messages.json')
-    const msg: DirectMessage = { ...data, id: genId(), createdAt: new Date().toISOString() }
-    all.push(msg)
-    writeJSON('messages.json', all)
-    return msg
-  },
+  create: USE_REDIS
+    ? async (data: Omit<DirectMessage, 'id' | 'createdAt'>): Promise<DirectMessage> => {
+        const all = await readJSONAsync<DirectMessage>('messages')
+        const msg: DirectMessage = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(msg)
+        await writeJSONAsync('messages', all)
+        return msg
+      }
+    : (data: Omit<DirectMessage, 'id' | 'createdAt'>): DirectMessage => {
+        const all = readJSON<DirectMessage>('messages')
+        const msg: DirectMessage = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(msg)
+        writeJSON('messages', all)
+        return msg
+      },
 }
 
 // ==================== Diary ====================
@@ -265,44 +472,83 @@ export interface Diary {
 }
 
 export const diaries = {
-  getAll: (): Diary[] => readJSON<Diary>('diaries.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<Diary[]> => readJSONAsync<Diary>('diaries')
+    : (): Diary[] => readJSON<Diary>('diaries'),
 
-  findByAuthorId: (authorId: string): Diary[] =>
-    readJSON<Diary>('diaries.json')
-      .filter(d => d.authorId === authorId)
-      .sort((a, b) => b.date.localeCompare(a.date)),
+  findByAuthorId: USE_REDIS
+    ? async (authorId: string): Promise<Diary[]> =>
+        (await readJSONAsync<Diary>('diaries'))
+          .filter(d => d.authorId === authorId)
+          .sort((a, b) => b.date.localeCompare(a.date))
+    : (authorId: string): Diary[] =>
+        readJSON<Diary>('diaries')
+          .filter(d => d.authorId === authorId)
+          .sort((a, b) => b.date.localeCompare(a.date)),
 
-  findByAuthorAndDate: (authorId: string, date: string): Diary | undefined =>
-    readJSON<Diary>('diaries.json').find(d => d.authorId === authorId && d.date === date),
+  findByAuthorAndDate: USE_REDIS
+    ? async (authorId: string, date: string): Promise<Diary | undefined> =>
+        (await readJSONAsync<Diary>('diaries')).find(d => d.authorId === authorId && d.date === date)
+    : (authorId: string, date: string): Diary | undefined =>
+        readJSON<Diary>('diaries').find(d => d.authorId === authorId && d.date === date),
 
-  findById: (id: string): Diary | undefined =>
-    readJSON<Diary>('diaries.json').find(d => d.id === id),
+  findById: USE_REDIS
+    ? async (id: string): Promise<Diary | undefined> =>
+        (await readJSONAsync<Diary>('diaries')).find(d => d.id === id)
+    : (id: string): Diary | undefined =>
+        readJSON<Diary>('diaries').find(d => d.id === id),
 
-  create: (data: Omit<Diary, 'id' | 'createdAt' | 'updatedAt'>): Diary => {
-    const all = readJSON<Diary>('diaries.json')
-    const now = new Date().toISOString()
-    const diary: Diary = { ...data, id: genId(), createdAt: now, updatedAt: now }
-    all.push(diary)
-    writeJSON('diaries.json', all)
-    return diary
-  },
+  create: USE_REDIS
+    ? async (data: Omit<Diary, 'id' | 'createdAt' | 'updatedAt'>): Promise<Diary> => {
+        const all = await readJSONAsync<Diary>('diaries')
+        const now = new Date().toISOString()
+        const diary: Diary = { ...data, id: genId(), createdAt: now, updatedAt: now }
+        all.push(diary)
+        await writeJSONAsync('diaries', all)
+        return diary
+      }
+    : (data: Omit<Diary, 'id' | 'createdAt' | 'updatedAt'>): Diary => {
+        const all = readJSON<Diary>('diaries')
+        const now = new Date().toISOString()
+        const diary: Diary = { ...data, id: genId(), createdAt: now, updatedAt: now }
+        all.push(diary)
+        writeJSON('diaries', all)
+        return diary
+      },
 
-  update: (id: string, data: Partial<Diary>): Diary | undefined => {
-    const all = readJSON<Diary>('diaries.json')
-    const idx = all.findIndex(d => d.id === id)
-    if (idx === -1) return undefined
-    all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
-    writeJSON('diaries.json', all)
-    return all[idx]
-  },
+  update: USE_REDIS
+    ? async (id: string, data: Partial<Diary>): Promise<Diary | undefined> => {
+        const all = await readJSONAsync<Diary>('diaries')
+        const idx = all.findIndex(d => d.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
+        await writeJSONAsync('diaries', all)
+        return all[idx]
+      }
+    : (id: string, data: Partial<Diary>): Diary | undefined => {
+        const all = readJSON<Diary>('diaries')
+        const idx = all.findIndex(d => d.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data, updatedAt: new Date().toISOString() }
+        writeJSON('diaries', all)
+        return all[idx]
+      },
 
-  delete: (id: string): boolean => {
-    const all = readJSON<Diary>('diaries.json')
-    const filtered = all.filter(d => d.id !== id)
-    if (filtered.length === all.length) return false
-    writeJSON('diaries.json', filtered)
-    return true
-  },
+  delete: USE_REDIS
+    ? async (id: string): Promise<boolean> => {
+        const all = await readJSONAsync<Diary>('diaries')
+        const filtered = all.filter(d => d.id !== id)
+        if (filtered.length === all.length) return false
+        await writeJSONAsync('diaries', filtered)
+        return true
+      }
+    : (id: string): boolean => {
+        const all = readJSON<Diary>('diaries')
+        const filtered = all.filter(d => d.id !== id)
+        if (filtered.length === all.length) return false
+        writeJSON('diaries', filtered)
+        return true
+      },
 }
 
 // ==================== Letter ====================
@@ -319,40 +565,75 @@ export interface Letter {
 }
 
 export const letters = {
-  getAll: (): Letter[] => readJSON<Letter>('letters.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<Letter[]> => readJSONAsync<Letter>('letters')
+    : (): Letter[] => readJSON<Letter>('letters'),
 
-  findById: (id: string): Letter | undefined =>
-    readJSON<Letter>('letters.json').find(l => l.id === id),
+  findById: USE_REDIS
+    ? async (id: string): Promise<Letter | undefined> =>
+        (await readJSONAsync<Letter>('letters')).find(l => l.id === id)
+    : (id: string): Letter | undefined =>
+        readJSON<Letter>('letters').find(l => l.id === id),
 
-  findByUser: (userId: string): Letter[] =>
-    readJSON<Letter>('letters.json')
-      .filter(l => l.senderId === userId || l.receiverId === userId)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+  findByUser: USE_REDIS
+    ? async (userId: string): Promise<Letter[]> =>
+        (await readJSONAsync<Letter>('letters'))
+          .filter(l => l.senderId === userId || l.receiverId === userId)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    : (userId: string): Letter[] =>
+        readJSON<Letter>('letters')
+          .filter(l => l.senderId === userId || l.receiverId === userId)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 
-  create: (data: Omit<Letter, 'id' | 'createdAt'>): Letter => {
-    const all = readJSON<Letter>('letters.json')
-    const letter: Letter = { ...data, id: genId(), createdAt: new Date().toISOString() }
-    all.push(letter)
-    writeJSON('letters.json', all)
-    return letter
-  },
+  create: USE_REDIS
+    ? async (data: Omit<Letter, 'id' | 'createdAt'>): Promise<Letter> => {
+        const all = await readJSONAsync<Letter>('letters')
+        const letter: Letter = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(letter)
+        await writeJSONAsync('letters', all)
+        return letter
+      }
+    : (data: Omit<Letter, 'id' | 'createdAt'>): Letter => {
+        const all = readJSON<Letter>('letters')
+        const letter: Letter = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(letter)
+        writeJSON('letters', all)
+        return letter
+      },
 
-  update: (id: string, data: Partial<Letter>): Letter | undefined => {
-    const all = readJSON<Letter>('letters.json')
-    const idx = all.findIndex(l => l.id === id)
-    if (idx === -1) return undefined
-    all[idx] = { ...all[idx], ...data }
-    writeJSON('letters.json', all)
-    return all[idx]
-  },
+  update: USE_REDIS
+    ? async (id: string, data: Partial<Letter>): Promise<Letter | undefined> => {
+        const all = await readJSONAsync<Letter>('letters')
+        const idx = all.findIndex(l => l.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data }
+        await writeJSONAsync('letters', all)
+        return all[idx]
+      }
+    : (id: string, data: Partial<Letter>): Letter | undefined => {
+        const all = readJSON<Letter>('letters')
+        const idx = all.findIndex(l => l.id === id)
+        if (idx === -1) return undefined
+        all[idx] = { ...all[idx], ...data }
+        writeJSON('letters', all)
+        return all[idx]
+      },
 
-  delete: (id: string): boolean => {
-    const all = readJSON<Letter>('letters.json')
-    const filtered = all.filter(l => l.id !== id)
-    if (filtered.length === all.length) return false
-    writeJSON('letters.json', filtered)
-    return true
-  },
+  delete: USE_REDIS
+    ? async (id: string): Promise<boolean> => {
+        const all = await readJSONAsync<Letter>('letters')
+        const filtered = all.filter(l => l.id !== id)
+        if (filtered.length === all.length) return false
+        await writeJSONAsync('letters', filtered)
+        return true
+      }
+    : (id: string): boolean => {
+        const all = readJSON<Letter>('letters')
+        const filtered = all.filter(l => l.id !== id)
+        if (filtered.length === all.length) return false
+        writeJSON('letters', filtered)
+        return true
+      },
 }
 
 // ==================== Report ====================
@@ -367,67 +648,121 @@ export interface Report {
 }
 
 export const reports = {
-  getAll: (): Report[] => readJSON<Report>('reports.json'),
+  getAll: USE_REDIS
+    ? async (): Promise<Report[]> => readJSONAsync<Report>('reports')
+    : (): Report[] => readJSON<Report>('reports'),
 
-  create: (data: Omit<Report, 'id' | 'createdAt'>): Report => {
-    const all = readJSON<Report>('reports.json')
-    const report: Report = { ...data, id: genId(), createdAt: new Date().toISOString() }
-    all.push(report)
-    writeJSON('reports.json', all)
-    return report
-  },
+  create: USE_REDIS
+    ? async (data: Omit<Report, 'id' | 'createdAt'>): Promise<Report> => {
+        const all = await readJSONAsync<Report>('reports')
+        const report: Report = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(report)
+        await writeJSONAsync('reports', all)
+        return report
+      }
+    : (data: Omit<Report, 'id' | 'createdAt'>): Report => {
+        const all = readJSON<Report>('reports')
+        const report: Report = { ...data, id: genId(), createdAt: new Date().toISOString() }
+        all.push(report)
+        writeJSON('reports', all)
+        return report
+      },
 }
 
 // ==================== 辅助函数：填充 author 信息 ====================
 
-export function getUserPublicInfo(userId: string): {
-  veinId: string
-  nickname: string
-  avatarStyle: string
-  avatarEmoji: string
-  avatarColor: string
-  mbti: string
-  bio: string
-  tags: string
-} | undefined {
-  const user = users.findById(userId)
-  if (!user) return undefined
-  return {
-    veinId: user.veinId,
-    nickname: user.nickname,
-    avatarStyle: user.avatarStyle,
-    avatarEmoji: user.avatarEmoji,
-    avatarColor: user.avatarColor,
-    mbti: user.mbti,
-    bio: user.bio,
-    tags: user.tags,
-  }
-}
+export const getUserPublicInfo = USE_REDIS
+  ? async (userId: string): Promise<{
+      veinId: string
+      nickname: string
+      avatarStyle: string
+      avatarEmoji: string
+      avatarColor: string
+      mbti: string
+      bio: string
+      tags: string
+    } | undefined> => {
+      const user = await users.findById(userId)
+      if (!user) return undefined
+      return {
+        veinId: user.veinId,
+        nickname: user.nickname,
+        avatarStyle: user.avatarStyle,
+        avatarEmoji: user.avatarEmoji,
+        avatarColor: user.avatarColor,
+        mbti: user.mbti,
+        bio: user.bio,
+        tags: user.tags,
+      }
+    }
+  : (userId: string): {
+      veinId: string
+      nickname: string
+      avatarStyle: string
+      avatarEmoji: string
+      avatarColor: string
+      mbti: string
+      bio: string
+      tags: string
+    } | undefined => {
+      const user = readJSON<User>('users').find(u => u.id === userId)
+      if (!user) return undefined
+      return {
+        veinId: user.veinId,
+        nickname: user.nickname,
+        avatarStyle: user.avatarStyle,
+        avatarEmoji: user.avatarEmoji,
+        avatarColor: user.avatarColor,
+        mbti: user.mbti,
+        bio: user.bio,
+        tags: user.tags,
+      }
+    }
 
-export function getUserBasicInfo(userId: string): {
-  id: string
-  veinId: string
-  nickname: string
-  avatarStyle: string
-  avatarEmoji: string
-  avatarColor: string
-} | undefined {
-  const user = users.findById(userId)
-  if (!user) return undefined
-  return {
-    id: user.id,
-    veinId: user.veinId,
-    nickname: user.nickname,
-    avatarStyle: user.avatarStyle,
-    avatarEmoji: user.avatarEmoji,
-    avatarColor: user.avatarColor,
-  }
-}
+export const getUserBasicInfo = USE_REDIS
+  ? async (userId: string): Promise<{
+      id: string
+      veinId: string
+      nickname: string
+      avatarStyle: string
+      avatarEmoji: string
+      avatarColor: string
+    } | undefined> => {
+      const user = await users.findById(userId)
+      if (!user) return undefined
+      return {
+        id: user.id,
+        veinId: user.veinId,
+        nickname: user.nickname,
+        avatarStyle: user.avatarStyle,
+        avatarEmoji: user.avatarEmoji,
+        avatarColor: user.avatarColor,
+      }
+    }
+  : (userId: string): {
+      id: string
+      veinId: string
+      nickname: string
+      avatarStyle: string
+      avatarEmoji: string
+      avatarColor: string
+    } | undefined => {
+      const user = readJSON<User>('users').find(u => u.id === userId)
+      if (!user) return undefined
+      return {
+        id: user.id,
+        veinId: user.veinId,
+        nickname: user.nickname,
+        avatarStyle: user.avatarStyle,
+        avatarEmoji: user.avatarEmoji,
+        avatarColor: user.avatarColor,
+      }
+    }
 
 // ==================== 初始化示例数据 ====================
 
-function seedData() {
-  const existingPosts = readJSON<Post>('posts.json')
+async function seedData() {
+  const existingPosts = await readJSONAsync<Post>('posts')
   if (existingPosts.length > 0) return
 
   const now = new Date().toISOString()
@@ -722,7 +1057,7 @@ function seedData() {
     },
   ]
 
-  writeJSON('posts.json', samplePosts)
+  await writeJSONAsync('posts', samplePosts)
 
   // Seed comments
   const sampleComments: Comment[] = [
@@ -741,7 +1076,7 @@ function seedData() {
     { id: genId(), content: '青春啊，太美好了', postId: samplePosts[13].id, authorId: '', createdAt: new Date(Date.now() - 86400000 * 1).toISOString() },
     { id: genId(), content: '冲！说不定人家也对你有意思呢', postId: samplePosts[13].id, authorId: '', createdAt: new Date(Date.now() - 86400000 * 0.9).toISOString() },
   ]
-  writeJSON('comments.json', sampleComments)
+  await writeJSONAsync('comments', sampleComments)
 
   // Seed diaries
   const today = new Date()
@@ -799,7 +1134,7 @@ function seedData() {
       updatedAt: new Date(Date.now() - 86400000 * 7).toISOString(),
     },
   ]
-  writeJSON('diaries.json', sampleDiaries)
+  await writeJSONAsync('diaries', sampleDiaries)
 
   // Seed letters
   const sampleLetters: Letter[] = [
@@ -834,8 +1169,14 @@ function seedData() {
       createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
     },
   ]
-  writeJSON('letters.json', sampleLetters)
+  await writeJSONAsync('letters', sampleLetters)
 }
 
-// 在模块加载时执行种子数据
-seedData()
+// 在模块加载时执行种子数据（使用 IIFE 处理 async）
+;(async () => {
+  try {
+    await seedData()
+  } catch (err) {
+    console.error('[treehole] seedData failed:', err)
+  }
+})()

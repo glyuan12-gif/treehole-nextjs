@@ -10,7 +10,7 @@ export async function GET(
   try {
     const { veinId } = await params
 
-    const user = users.findByVeinId(veinId)
+    const user = await users.findByVeinId(veinId)
 
     if (!user) {
       return NextResponse.json(

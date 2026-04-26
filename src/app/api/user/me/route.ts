@@ -62,7 +62,7 @@ export async function PUT(request: NextRequest) {
     if (defaultAnonymous !== undefined) updateData.defaultAnonymous = defaultAnonymous
     if (showOnline !== undefined) updateData.showOnline = showOnline
 
-    const updatedUser = users.update(user.id, updateData)
+    const updatedUser = await users.update(user.id, updateData)
 
     if (!updatedUser) {
       return NextResponse.json(

@@ -22,7 +22,7 @@ export async function POST(
 
     const { id: postId } = await params
 
-    const post = posts.findById(postId)
+    const post = await posts.findById(postId)
 
     if (!post) {
       return NextResponse.json(
@@ -35,15 +35,15 @@ export async function POST(
     const { type } = reactionSchema.parse(body)
 
     // 检查是否已有该类型的反应
-    const existingReaction = reactions.findUnique(postId, user.id, type)
+    const existingReaction = await reactions.findUnique(postId, user.id, type)
 
     if (existingReaction) {
       // 移除反应
-      reactions.delete(existingReaction.id)
+      await reactions.delete(existingReaction.id)
       return NextResponse.json({ reacted: false, type })
     } else {
       // 添加反应
-      reactions.create({
+      await reactions.create({
         postId,
         userId: user.id,
         type,

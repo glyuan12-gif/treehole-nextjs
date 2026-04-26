@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     const data = registerSchema.parse(body)
 
     // 检查 veinId 是否已被占用
-    if (users.findByVeinId(data.veinId)) {
+    if (await users.findByVeinId(data.veinId)) {
       return NextResponse.json(
         { error: '该叶脉号已被占用，请换一个' },
         { status: 409 }
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
     const passwordHash = await hashPassword(data.password)
 
-    const user = users.create({
+    const user = await users.create({
       veinId: data.veinId,
       passwordHash,
       nickname: data.nickname,

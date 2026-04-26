@@ -12,7 +12,7 @@ export async function GET(
   try {
     const { id } = await params
 
-    const post = posts.findById(id)
+    const post = await posts.findById(id)
 
     if (!post) {
       return NextResponse.json(
@@ -21,7 +21,7 @@ export async function GET(
       )
     }
 
-    const author = getUserPublicInfo(post.authorId)
+    const author = await getUserPublicInfo(post.authorId)
 
     return NextResponse.json({
       ...post,
@@ -56,7 +56,7 @@ export async function DELETE(
 
     const { id } = await params
 
-    const post = posts.findById(id)
+    const post = await posts.findById(id)
 
     if (!post) {
       return NextResponse.json(
@@ -72,7 +72,7 @@ export async function DELETE(
       )
     }
 
-    posts.delete(id)
+    await posts.delete(id)
 
     return NextResponse.json({ message: '删除成功' })
   } catch (error) {

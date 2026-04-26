@@ -20,11 +20,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '未登录' }, { status: 401 })
     }
 
-    const userLetters = letters.findByUser(user.id)
+    const userLetters = await letters.findByUser(user.id)
 
-    const lettersWithUsers = userLetters.map(letter => {
-      const senderInfo = getUserBasicInfo(letter.senderId)
-      const receiverInfo = letter.receiverId ? getUserBasicInfo(letter.receiverId) : null
+    const lettersWithUsers = await Promise.all(userLetters.map(async letter => {
+      const senderInfo = await getUserBasicInfo(letter.senderId)
+      const receiverInfo = letter.receiverId ? await getUserBasicInfo(letter.receiverId) : null
       return {
         ...letter,
         sender: senderInfo || {
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
         },
         receiver: receiverInfo || null,
       }
-    })
+    }))
 
     return NextResponse.json(lettersWithUsers)
   } catch (error) {
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     let receiverId: string | null = null
 
     if (!data.isSelf && data.receiverVeinId) {
-      const receiver = users.findByVeinId(data.receiverVeinId)
+      const receiver = await users.findByVeinId(data.receiverVeinId)
       if (!receiver) {
         return NextResponse.json(
           { error: '接收者不存在' },
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
       receiverId = receiver.id
     }
 
-    const letter = letters.create({
+    const letter = await letters.create({
       content: data.content,
       openDate: data.openDate || null,
       isSelf: data.isSelf,

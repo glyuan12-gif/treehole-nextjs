@@ -17,13 +17,13 @@ export async function GET(
 
     const { conversationId } = await params
 
-    const conversationMessages = messages.findBetween(user.id, conversationId).sort(
+    const conversationMessages = (await messages.findBetween(user.id, conversationId)).sort(
       (a, b) => a.createdAt.localeCompare(b.createdAt)
     )
 
-    const messagesWithUsers = conversationMessages.map(msg => {
-      const senderInfo = getUserBasicInfo(msg.senderId)
-      const receiverInfo = getUserBasicInfo(msg.receiverId)
+    const messagesWithUsers = await Promise.all(conversationMessages.map(async msg => {
+      const senderInfo = await getUserBasicInfo(msg.senderId)
+      const receiverInfo = await getUserBasicInfo(msg.receiverId)
       return {
         ...msg,
         sender: senderInfo || {
@@ -43,7 +43,7 @@ export async function GET(
           avatarColor: '#999',
         },
       }
-    })
+    }))
 
     return NextResponse.json(messagesWithUsers)
   } catch (error) {

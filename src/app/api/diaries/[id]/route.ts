@@ -17,7 +17,7 @@ export async function DELETE(
 
     const { id } = await params
 
-    const diary = diaries.findById(id)
+    const diary = await diaries.findById(id)
 
     if (!diary) {
       return NextResponse.json(
@@ -33,7 +33,7 @@ export async function DELETE(
       )
     }
 
-    diaries.delete(id)
+    await diaries.delete(id)
 
     return NextResponse.json({ message: '删除成功' })
   } catch (error) {

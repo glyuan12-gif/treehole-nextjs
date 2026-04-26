@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: '未登录' }, { status: 401 })
     }
 
-    const userDiaries = diaries.findByAuthorId(user.id)
+    const userDiaries = await diaries.findByAuthorId(user.id)
 
     return NextResponse.json(userDiaries)
   } catch (error) {
@@ -44,19 +44,19 @@ export async function POST(request: NextRequest) {
     const data = diarySchema.parse(body)
 
     // 检查该日期是否已有日记
-    const existingDiary = diaries.findByAuthorAndDate(user.id, data.date)
+    const existingDiary = await diaries.findByAuthorAndDate(user.id, data.date)
 
     let diary
     if (existingDiary) {
       // 更新已有日记
-      diary = diaries.update(existingDiary.id, {
+      diary = await diaries.update(existingDiary.id, {
         content: data.content,
         mood: data.mood,
         isPublic: data.isPublic,
       })
     } else {
       // 创建新日记
-      diary = diaries.create({
+      diary = await diaries.create({
         date: data.date,
         content: data.content,
         mood: data.mood,

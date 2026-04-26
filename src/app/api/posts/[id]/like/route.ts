@@ -17,7 +17,7 @@ export async function POST(
 
     const { id: postId } = await params
 
-    const post = posts.findById(postId)
+    const post = await posts.findById(postId)
 
     if (!post) {
       return NextResponse.json(
@@ -27,20 +27,20 @@ export async function POST(
     }
 
     // 检查是否已点赞
-    const existingLike = postLikes.findUnique(postId, user.id)
+    const existingLike = await postLikes.findUnique(postId, user.id)
 
     if (existingLike) {
       // 取消点赞
-      postLikes.delete(existingLike.id)
-      posts.update(postId, { likeCount: Math.max(0, post.likeCount - 1) })
+      await postLikes.delete(existingLike.id)
+      await posts.update(postId, { likeCount: Math.max(0, post.likeCount - 1) })
       return NextResponse.json({ liked: false })
     } else {
       // 点赞
-      postLikes.create({
+      await postLikes.create({
         postId,
         userId: user.id,
       })
-      posts.update(postId, { likeCount: post.likeCount + 1 })
+      await posts.update(postId, { likeCount: post.likeCount + 1 })
       return NextResponse.json({ liked: true })
     }
   } catch (error) {

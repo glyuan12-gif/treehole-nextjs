@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { veinId, password } = loginSchema.parse(body)
 
-    const user = users.findByVeinId(veinId)
+    const user = await users.findByVeinId(veinId)
 
     if (!user) {
       return NextResponse.json(
