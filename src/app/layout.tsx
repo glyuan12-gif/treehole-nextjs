@@ -31,6 +31,7 @@ export default function RootLayout({
               <div className="bg-orb" />
             </div>
             <div className="bg-grain" />
+            <div className="bg-pattern" />
 
             {/* Navigation */}
             <Navbar />
