@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useToast } from '@/contexts/ToastContext'
 import { Avatar } from '@/components/Avatar'
@@ -553,7 +554,29 @@ export default function SettingsPage() {
 
         {/* MBTI */}
         <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
-          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 12 }}>MBTI 人格</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 600, margin: 0 }}>MBTI 人格</h3>
+            <Link
+              href="/mbti"
+              style={{
+                fontSize: '0.8rem',
+                color: 'var(--accent)',
+                textDecoration: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontFamily: 'var(--font-ui)',
+                transition: 'opacity 0.2s',
+              }}
+            >
+              去测试
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+              </svg>
+            </Link>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: 10 }}>手动选择</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 8 }}>
             {MBTI_TYPES.map((type) => (
               <button
