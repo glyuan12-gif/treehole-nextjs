@@ -106,7 +106,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await api.register(data)
       setToken(result.token)
-      await refreshUser()
+      // 尝试获取完整用户信息，如果失败则使用注册返回的基本信息
+      try {
+        await refreshUser()
+      } catch {
+        // refreshUser 失败时，用注册数据创建基本用户对象
+        setUser({
+          id: result.userId,
+          veinId: result.veinId,
+          nickname: data.nickname,
+          role: data.role,
+          mbti: data.mbti || '',
+          avatarStyle: data.avatarStyle || 'emoji',
+          avatarEmoji: data.avatarEmoji || '😊',
+          avatarColor: data.avatarColor || '#5b8c6e',
+          allowFind: true,
+          bio: '',
+          tags: '',
+          notificationPrefs: JSON.stringify({ comment: true, like: true, message: true, system: true }),
+          defaultAnonymous: false,
+          showOnline: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      }
       return result
     } catch (err) {
       console.error('Register failed:', err)
@@ -118,7 +141,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await api.login(veinId, password)
       setToken(result.token)
-      await refreshUser()
+      // 尝试获取完整用户信息，如果失败则使用登录返回的基本信息
+      try {
+        await refreshUser()
+      } catch {
+        setUser({
+          id: result.userId,
+          veinId: result.veinId,
+          nickname: veinId,
+          role: 'other',
+          mbti: '',
+          avatarStyle: 'emoji',
+          avatarEmoji: '😊',
+          avatarColor: '#5b8c6e',
+          allowFind: true,
+          bio: '',
+          tags: '',
+          notificationPrefs: JSON.stringify({ comment: true, like: true, message: true, system: true }),
+          defaultAnonymous: false,
+          showOnline: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+      }
       return result
     } catch (err) {
       console.error('Login failed:', err)
