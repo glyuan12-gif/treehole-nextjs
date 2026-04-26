@@ -54,6 +54,11 @@ export default function PostCard({ post }: PostCardProps) {
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 2 }}>
               {formatTime(post.createdAt)}
             </div>
+            {post.author.bio && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 200 }}>
+                {post.author.bio}
+              </div>
+            )}
           </div>
         </div>
 

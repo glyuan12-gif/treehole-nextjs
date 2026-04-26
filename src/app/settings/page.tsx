@@ -9,6 +9,16 @@ import ThemePicker from '@/components/ThemePicker'
 import RoleSelector from '@/components/RoleSelector'
 import { EMOJIS, COLORS, MBTI_TYPES, MBTI_DESC } from '@/lib/constants'
 
+const PRESET_TAGS = [
+  '深夜emo', '早睡早起', '咖啡爱好者', '猫奴', '狗奴', '追星族',
+  '游戏玩家', '读书人', '运动达人', '美食家', '摄影爱好者', '音乐人',
+  '文艺青年', '理工男/女', '社恐', '社牛', '佛系', '卷王',
+  '考研党', '打工人', '自由职业', '留学生', '单身', '恋爱中',
+  '想太多', '话痨', '安静型', '段子手',
+]
+
+const DEFAULT_NOTIFICATION_PREFS = { comment: true, like: true, message: true, system: true }
+
 // 密码显示/隐藏切换图标组件
 function EyeIcon({ show, onClick }: { show: boolean; onClick: () => void }) {
   return (
@@ -87,6 +97,16 @@ export default function SettingsPage() {
   const [editAvatarColor, setEditAvatarColor] = useState('#5b8c6e')
   const [saving, setSaving] = useState(false)
 
+  // Bio & tags
+  const [editBio, setEditBio] = useState('')
+  const [editTags, setEditTags] = useState<string[]>([])
+
+  // Privacy & notification
+  const [editAllowFind, setEditAllowFind] = useState(true)
+  const [editDefaultAnonymous, setEditDefaultAnonymous] = useState(false)
+  const [editShowOnline, setEditShowOnline] = useState(true)
+  const [editNotifPrefs, setEditNotifPrefs] = useState(DEFAULT_NOTIFICATION_PREFS)
+
   // Copy veinId
   const [veinIdCopied, setVeinIdCopied] = useState(false)
 
@@ -97,6 +117,20 @@ export default function SettingsPage() {
       setEditAvatarStyle(user.avatarStyle)
       setEditAvatarEmoji(user.avatarEmoji)
       setEditAvatarColor(user.avatarColor)
+      setEditBio(user.bio || '')
+      // Parse tags from comma-separated string
+      const parsedTags = user.tags ? user.tags.split(',').filter((t: string) => t.trim()) : []
+      setEditTags(parsedTags)
+      setEditAllowFind(user.allowFind !== undefined ? user.allowFind : true)
+      setEditDefaultAnonymous(user.defaultAnonymous || false)
+      setEditShowOnline(user.showOnline !== undefined ? user.showOnline : true)
+      // Parse notification prefs from JSON string
+      try {
+        const prefs = user.notificationPrefs ? JSON.parse(user.notificationPrefs) : DEFAULT_NOTIFICATION_PREFS
+        setEditNotifPrefs({ ...DEFAULT_NOTIFICATION_PREFS, ...prefs })
+      } catch {
+        setEditNotifPrefs(DEFAULT_NOTIFICATION_PREFS)
+      }
     }
   }, [user])
 
@@ -197,6 +231,12 @@ export default function SettingsPage() {
         avatarStyle: editAvatarStyle,
         avatarEmoji: editAvatarEmoji,
         avatarColor: editAvatarColor,
+        bio: editBio.trim(),
+        tags: editTags.join(','),
+        allowFind: editAllowFind,
+        defaultAnonymous: editDefaultAnonymous,
+        showOnline: editShowOnline,
+        notificationPrefs: JSON.stringify(editNotifPrefs),
       })
       showToast('保存成功')
     } catch {
@@ -604,6 +644,151 @@ export default function SettingsPage() {
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>切换界面主题风格</div>
             </div>
             <button className="btn-ghost btn-sm" onClick={() => setShowThemePicker(true)}>选择</button>
+          </div>
+        </div>
+
+        {/* Bio */}
+        <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 4 }}>个性签名</h3>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>写一句话介绍自己</div>
+          <textarea
+            className="form-input"
+            placeholder="写一句话介绍自己..."
+            value={editBio}
+            onChange={(e) => {
+              if (e.target.value.length <= 100) setEditBio(e.target.value)
+            }}
+            maxLength={100}
+            rows={2}
+            style={{ resize: 'none', lineHeight: 1.6 }}
+          />
+          <div className="char-count" style={{ marginTop: 4 }}>
+            {editBio.length}/100
+          </div>
+        </div>
+
+        {/* Tags */}
+        <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 4 }}>个人标签</h3>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+            选择最能代表你的标签（最多 5 个）
+          </div>
+          {editTags.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              {editTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="tag-capsule selected"
+                  onClick={() => setEditTags(editTags.filter((t) => t !== tag))}
+                  style={{ cursor: 'pointer' }}
+                >
+                  {tag}
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: 4 }}>
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {PRESET_TAGS.map((tag) => {
+              const isSelected = editTags.includes(tag)
+              return (
+                <span
+                  key={tag}
+                  className={`tag-capsule ${isSelected ? 'selected' : ''}`}
+                  onClick={() => {
+                    if (isSelected) {
+                      setEditTags(editTags.filter((t) => t !== tag))
+                    } else if (editTags.length < 5) {
+                      setEditTags([...editTags, tag])
+                    } else {
+                      showToast('最多选择 5 个标签')
+                    }
+                  }}
+                >
+                  {tag}
+                </span>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Privacy Settings */}
+        <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 4 }}>隐私设置</h3>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>管理你的隐私偏好</div>
+
+          <div className="settings-toggle-row">
+            <div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>允许被搜索</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>其他用户可以通过叶脉号搜索到你</div>
+            </div>
+            <div
+              className={`toggle-switch ${editAllowFind ? 'active' : ''}`}
+              onClick={() => setEditAllowFind(!editAllowFind)}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>帖子默认匿名</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>发帖时默认不显示叶脉号</div>
+            </div>
+            <div
+              className={`toggle-switch ${editDefaultAnonymous ? 'active' : ''}`}
+              onClick={() => setEditDefaultAnonymous(!editDefaultAnonymous)}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div>
+              <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>显示在线状态</div>
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>其他用户可以看到你是否在线</div>
+            </div>
+            <div
+              className={`toggle-switch ${editShowOnline ? 'active' : ''}`}
+              onClick={() => setEditShowOnline(!editShowOnline)}
+            />
+          </div>
+        </div>
+
+        {/* Notification Preferences */}
+        <div className="glass-card" style={{ padding: 20, marginBottom: 16 }}>
+          <h3 style={{ fontSize: '0.95rem', fontWeight: 600, marginBottom: 4 }}>通知偏好</h3>
+          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>选择你希望接收的通知类型</div>
+
+          <div className="settings-toggle-row">
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>新评论通知</div>
+            <div
+              className={`toggle-switch ${editNotifPrefs.comment ? 'active' : ''}`}
+              onClick={() => setEditNotifPrefs({ ...editNotifPrefs, comment: !editNotifPrefs.comment })}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>新点赞通知</div>
+            <div
+              className={`toggle-switch ${editNotifPrefs.like ? 'active' : ''}`}
+              onClick={() => setEditNotifPrefs({ ...editNotifPrefs, like: !editNotifPrefs.like })}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>新私信通知</div>
+            <div
+              className={`toggle-switch ${editNotifPrefs.message ? 'active' : ''}`}
+              onClick={() => setEditNotifPrefs({ ...editNotifPrefs, message: !editNotifPrefs.message })}
+            />
+          </div>
+
+          <div className="settings-toggle-row">
+            <div style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>系统通知</div>
+            <div
+              className={`toggle-switch ${editNotifPrefs.system ? 'active' : ''}`}
+              onClick={() => setEditNotifPrefs({ ...editNotifPrefs, system: !editNotifPrefs.system })}
+            />
           </div>
         </div>
 

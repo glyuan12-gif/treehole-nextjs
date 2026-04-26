@@ -41,7 +41,12 @@ export async function POST(request: NextRequest) {
       avatarStyle: data.avatarStyle,
       avatarEmoji: data.avatarEmoji,
       avatarColor: data.avatarColor,
-      allowFind: false,
+      allowFind: true,
+      bio: '',
+      tags: '',
+      notificationPrefs: JSON.stringify({ comment: true, like: true, message: true, system: true }),
+      defaultAnonymous: false,
+      showOnline: true,
     })
 
     const token = await signToken({ userId: user.id, veinId: user.veinId })

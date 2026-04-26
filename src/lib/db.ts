@@ -27,6 +27,11 @@ export interface User {
   avatarEmoji: string
   avatarColor: string
   allowFind: boolean
+  bio: string
+  tags: string
+  notificationPrefs: string
+  defaultAnonymous: boolean
+  showOnline: boolean
   passwordHash?: string
   createdAt: string
   updatedAt: string
@@ -374,6 +379,8 @@ export function getUserPublicInfo(userId: string): {
   avatarEmoji: string
   avatarColor: string
   mbti: string
+  bio: string
+  tags: string
 } | undefined {
   const user = users.findById(userId)
   if (!user) return undefined
@@ -384,6 +391,8 @@ export function getUserPublicInfo(userId: string): {
     avatarEmoji: user.avatarEmoji,
     avatarColor: user.avatarColor,
     mbti: user.mbti,
+    bio: user.bio,
+    tags: user.tags,
   }
 }
 

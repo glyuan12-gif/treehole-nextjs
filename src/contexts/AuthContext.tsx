@@ -13,6 +13,11 @@ export interface User {
   avatarEmoji: string
   avatarColor: string
   allowFind: boolean
+  bio: string
+  tags: string
+  notificationPrefs: string
+  defaultAnonymous: boolean
+  showOnline: boolean
   createdAt: string
   updatedAt: string
 }
