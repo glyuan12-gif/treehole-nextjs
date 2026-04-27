@@ -33,7 +33,40 @@
   }
 }{
   "name": "treehole-app",
+  "version": "0.1.0",{
+  "name": "treehole-app",
   "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+  },
+  "dependencies": {
+    "jose": "^6.2.2",
+    "next": "^15.5.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@opennextjs/cloudflare": "latest",
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "dotenv": "^17.4.2",
+    "eslint": "^9",
+    "eslint-config-next": "^15.5.15",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wrangler": "latest"
+  }
+}
   "private": true,
   "scripts": {
     "dev": "next dev",
