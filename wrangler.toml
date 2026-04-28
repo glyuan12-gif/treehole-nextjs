@@ -1,4 +1,4 @@
-name = "treehole"
+name = "treehole-nextjs"
 compatibility_date = "2025-03-25"
 compatibility_flags = ["nodejs_compat"]
 
