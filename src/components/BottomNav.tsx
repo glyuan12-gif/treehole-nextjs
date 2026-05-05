@@ -85,7 +85,7 @@ export default function BottomNav() {
             href={isDisabled ? '/settings' : tab.href}
             className={`tab-item ${isActive ? 'active' : ''}`}
             style={isDisabled ? { opacity: 0.5 } : undefined}
-            onClick={isDisabled ? (e) => { e.preventDefault() } : undefined}
+            onClick={isDisabled ? (e) => { e.preventDefault(); window.location.href = '/settings' } : undefined}
           >
             {tab.icon}
             <span>{tab.label}</span>
